@@ -210,35 +210,6 @@ back to `localhost:8080` will fail. Easiest workaround: leave
 
 ---
 
-## Troubleshooting
-
-**"It just shows the splash and Engage spins forever."**
-Open DevTools → Network and click Engage. If `/api/news` returns 502,
-either Google News blocked the IP (rare on cold start) or the RSS feed is
-empty for that topic. Try a more common topic.
-
-**"It says 'sign in to engage' but I'm running locally — why?"**
-You've got `NUTS_AUTH_URL` set in your shell or a `.env`. Unset it (or
-add `DISABLE_AUTH=true`) and restart.
-
-**"Login bounces back but says auth required."**
-`RETURN_URL` doesn't match the origin the browser is on. They must match
-exactly — scheme, host, port. `http://localhost:8080` ≠ `http://127.0.0.1:8080`.
-
-**"Login redirect fails with CORS / Origin not allowed."**
-The hosted `auth.nuts.services` has an allowlist of `CORS_ORIGINS`. Your
-origin isn't on it. Either ask to be added, run your own nuts-auth, or
-just unset `NUTS_AUTH_URL` and run anonymous.
-
-**"Music plays for 'war' but not other topics."**
-Was a real bug — should be fixed in the current revision. Earlier code
-unmuted the YouTube player after grub returned, which only worked when
-grub responded inside the browser's user-activation window (~5s from
-click). Current code claims audio permission synchronously on the Engage
-click and swells the volume from 0 → 100 when news arrives.
-
----
-
 ## Security note
 
 When auth is on, force accepts the bearer token via a URL `?token=`
