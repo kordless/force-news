@@ -19,7 +19,7 @@ logger = logging.getLogger("force")
 # Production deploy.sh sets both URLs to point at the hosted services.
 NUTS_AUTH     = os.environ.get("NUTS_AUTH_URL", "").rstrip("/")
 GRUB          = os.environ.get("GRUB_URL", "http://localhost:6792").rstrip("/")
-RETURN_URL    = os.environ.get("RETURN_URL", "http://localhost:8080/auth")
+RETURN_URL    = os.environ.get("RETURN_URL", "http://localhost:8084/auth")
 DEFAULT_TOPIC = os.environ.get("DEFAULT_TOPIC", "war")
 YT_VIDEO      = os.environ.get("YT_VIDEO_ID", "_D0ZQPqeJkk")  # Star Wars Main Title
 CACHE_TTL     = int(os.environ.get("CACHE_TTL", "300"))

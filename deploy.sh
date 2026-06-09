@@ -17,7 +17,7 @@ case "$TARGET" in
         echo "==> docker compose up — grub + force"
         docker compose up --build -d
         echo
-        echo "  force:  http://localhost:8080   (open this)"
+        echo "  force:  http://localhost:8084   (open this)"
         echo "  grub:   http://localhost:6792"
         echo
         echo "  logs:   docker compose logs -f"
