@@ -9,43 +9,53 @@ hyperspace over a starfield, with John Williams piped in from YouTube.
 
 ---
 
-## Quick start — run it locally, no auth, no extras
+## Quick start — run it locally, the whole stack, no accounts
+
+The full sovereign loop on your laptop: a Docker container for grub (the
+crawler) and a Python venv for force (the frontend). Both with auth off.
+No login, no nuts.services account, no external service in the picture.
 
 ```bash
+# 1. grub on Docker — the stealth crawler, on port 6792, no auth
+docker run -d --name grub -p 6792:6792 \
+    -e DISABLE_AUTH=true \
+    deepbluedynamics/grubcrawler
+
+# 2. force in a venv — the frontend, on port 8080, pointed at grub
 git clone https://github.com/kordless/force-news.git
 cd force-news
-
 python -m venv .venv
-# Linux/macOS:
-source .venv/bin/activate
-# Windows PowerShell:
-.venv\Scripts\Activate.ps1
-
+# Linux/macOS:        source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+
+GRUB_URL=http://localhost:6792 \
 uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
 ```
 
 Open **<http://localhost:8080>**, hit **Engage**, watch the crawl.
 
-That's the whole local-dev story. **No login, no nuts.services account, no
-grub instance required.** Out of the box, with no env vars set:
+That's it. Force calls grub at `localhost:6792`, grub drives news.google.com
+with its Camoufox stealth browser, the headlines roll up. Watch the crawl
+happen with `docker logs -f grub`.
 
-- **Auth is off** → no login prompt, the engage button just works
-- **Grub is off** → news.google.com's RSS feed is fetched directly via
-  HTTP. Same XML, same parser, no stealth browser in the loop.
+Stop when you're done: `docker stop grub && docker rm grub`.
 
-The defaults are tuned for "I just want to play with this". Production
-(`force.nuts.services`) explicitly opts back into both via env vars set
-by `deploy.sh`.
+### What's on, what's off
+
+| Mode | Auth | Crawl |
+|---|---|---|
+| Local quick-start (above) | OFF — anonymous | grub at localhost:6792 |
+| Production (`force.nuts.services`) | ON — JWT via auth.nuts.services | grub at grub.nuts.services |
 
 ### What gets toggled by what
 
 | Env var | Empty / unset | Set |
 |---|---|---|
 | `NUTS_AUTH_URL` | auth disabled (anonymous) | auth required — JWT validated against the URL |
-| `GRUB_URL` | direct RSS fetch via httpx | crawl through [grubcrawler](https://grub.nuts.services) on the user's bearer |
+| `GRUB_URL` | direct RSS fetch via httpx | crawl through grub on the user's bearer |
 
-You can also force-disable either even when its URL is set:
+Force overrides if the URL is set but you want the mode off:
 
 | Override | Effect |
 |---|---|
