@@ -517,9 +517,25 @@ async function engage() {
     btn.disabled = true;
     setStatus("Establishing comms…");
 
-    // (The YouTube player has been muted-playing since page load; that keeps
-    //  the autoplay session active. We unmute only AFTER grub returns, so the
-    //  music drops in at the moment of payload arrival.)
+    // ── CRITICAL: claim audio playback permission *synchronously* on the
+    //    click, before any await. Browsers (Chrome, Safari) only authorize
+    //    unmute/play when called within the user-activation window of the
+    //    initiating gesture (~5 seconds). If we wait for grub to return
+    //    (which can take 3-15s on a cache miss), the activation has expired
+    //    and unMute() will be silently denied — which is exactly why music
+    //    plays for "war" (cached, instant return) but not for other topics.
+    //
+    //    Trick: unMute + setVolume(0) right now to establish the audio
+    //    session with zero output, then setVolume(100) after grub returns
+    //    so the music "drops in" at payload arrival, which is what we want
+    //    cinematically without sacrificing reliability.
+    if (YT_PLAYER && typeof YT_PLAYER.unMute === "function") {
+        try {
+            YT_PLAYER.unMute();
+            YT_PLAYER.setVolume(0);
+            YT_PLAYER.playVideo();
+        } catch (e) {}
+    }
 
     try {
         TOKEN = getToken();
@@ -540,7 +556,10 @@ async function engage() {
         const data = await fetchNews(topic);
         const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
 
-        // Grub returned → stories loaded successfully
+        // Grub returned → drop the music in (volume swells from 0 to 100).
+        if (YT_PLAYER && typeof YT_PLAYER.setVolume === "function") {
+            try { YT_PLAYER.setVolume(100); } catch (e) {}
+        }
 
         setStatus(`${data.stories.length} dispatches received in ${elapsed}s · decoding…`);
         await new Promise(r => setTimeout(r, 400));
