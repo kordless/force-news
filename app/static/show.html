@@ -205,6 +205,11 @@ async function loadCfg() {
 }
 
 function showLoginPin(loggedIn, subject) {
+    if (CFG && CFG.auth_required === false) {
+        // auth disabled (local / sovereign mode) — no need to sign anything
+        $("#login-pin-text").innerHTML = "&#9679; anonymous";
+        return;
+    }
     if (loggedIn) {
         $("#login-pin-text").innerHTML = "&#9679; signed in" + (subject ? " · " + subject : "");
     } else {
@@ -539,7 +544,7 @@ async function engage() {
 
     try {
         TOKEN = getToken();
-        if (!TOKEN) {
+        if (CFG.auth_required && !TOKEN) {
             setStatus("Routing through nuts-auth…");
             await new Promise(r => setTimeout(r, 350));
             location.href = CFG.login_url;

@@ -15,12 +15,28 @@ from fastapi.staticfiles import StaticFiles
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("force")
 
-NUTS_AUTH    = os.environ.get("NUTS_AUTH_URL", "https://auth.nuts.services").rstrip("/")
-GRUB         = os.environ.get("GRUB_URL", "https://grub.nuts.services").rstrip("/")
-RETURN_URL   = os.environ.get("RETURN_URL", "https://force.nuts.services/auth")
+# Empty defaults → both auth and grub are *off* for local dev. The deploy
+# script sets these for production. To force-toggle independent of URLs:
+#   DISABLE_AUTH=true → bypass auth even if NUTS_AUTH_URL is set
+#   DISABLE_GRUB=true → fetch news.google.com/rss directly even if GRUB_URL is set
+NUTS_AUTH     = os.environ.get("NUTS_AUTH_URL", "").rstrip("/")
+GRUB          = os.environ.get("GRUB_URL", "").rstrip("/")
+RETURN_URL    = os.environ.get("RETURN_URL", "http://localhost:8080/auth")
 DEFAULT_TOPIC = os.environ.get("DEFAULT_TOPIC", "war")
-YT_VIDEO     = os.environ.get("YT_VIDEO_ID", "_D0ZQPqeJkk")  # Star Wars Main Title
-CACHE_TTL    = int(os.environ.get("CACHE_TTL", "300"))
+YT_VIDEO      = os.environ.get("YT_VIDEO_ID", "_D0ZQPqeJkk")  # Star Wars Main Title
+CACHE_TTL     = int(os.environ.get("CACHE_TTL", "300"))
+
+def _truthy(s: str) -> bool:
+    return (s or "").strip().lower() in ("1", "true", "yes", "on")
+
+AUTH_ENABLED = bool(NUTS_AUTH) and not _truthy(os.environ.get("DISABLE_AUTH", ""))
+GRUB_ENABLED = bool(GRUB)      and not _truthy(os.environ.get("DISABLE_GRUB", ""))
+
+logger.info(
+    "force config: auth=%s grub=%s",
+    "ON via " + NUTS_AUTH if AUTH_ENABLED else "OFF (anonymous)",
+    "ON via " + GRUB if GRUB_ENABLED else "OFF (direct RSS fetch)",
+)
 
 app = FastAPI(title="force", docs_url=None, redoc_url=None)
 STATIC = Path(__file__).parent / "static"
@@ -30,7 +46,11 @@ _cache: dict = {}
 
 
 # ── auth ───────────────────────────────────────────────────────────────────
+ANON_CLAIMS = {"sub": "anonymous@local", "user_uid": "anon", "valid": True, "anonymous": True}
+
 async def _verify(token: str) -> Optional[dict]:
+    if not AUTH_ENABLED:
+        return ANON_CLAIMS
     if not token:
         return None
     try:
@@ -92,17 +112,35 @@ def _parse_rss(xml: str, limit: int = 18) -> list[dict]:
     return stories
 
 
-async def _fetch_via_grub(topic: str, token: str) -> str:
-    rss_url = (
+def _rss_url(topic: str) -> str:
+    return (
         f"https://news.google.com/rss/search?q={quote_plus(topic)}"
         f"&hl=en-US&gl=US&ceid=US:en"
     )
+
+
+async def _fetch_direct(topic: str) -> str:
+    """Fetch the Google News RSS feed directly with httpx. Used when grub is
+    disabled (local dev, or DISABLE_GRUB / empty GRUB_URL). No browser
+    stealth, no auth — just an HTTP GET on a publicly-available feed."""
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True,
+                                 headers={"User-Agent": "force-news/0.1"}) as c:
+        r = await c.get(_rss_url(topic))
+        if r.status_code != 200:
+            raise HTTPException(
+                status_code=502,
+                detail=f"google news rss returned {r.status_code}",
+            )
+        return r.text
+
+
+async def _fetch_via_grub(topic: str, token: str) -> str:
     async with httpx.AsyncClient(timeout=30) as c:
         r = await c.post(
             f"{GRUB}/api/crawl",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": f"Bearer {token}"} if token else {},
             json={
-                "url": rss_url,
+                "url": _rss_url(topic),
                 "options": {"enable_javascript": False, "wait_for_load": False},
             },
         )
@@ -164,9 +202,15 @@ async def auth_callback(token: Optional[str] = None):
     return FileResponse(STATIC / "show.html", headers=_REFERRER_POLICY)
 
 
+def _login_url() -> Optional[str]:
+    if not AUTH_ENABLED:
+        return None
+    return f"{NUTS_AUTH}/login?return_url={RETURN_URL}"
+
+
 @app.get("/api/login-url")
 async def login_url():
-    return {"url": f"{NUTS_AUTH}/login?return_url={RETURN_URL}"}
+    return {"url": _login_url()}
 
 
 @app.get("/api/config")
@@ -175,7 +219,9 @@ async def cfg():
         "default_topic": DEFAULT_TOPIC,
         "yt_video_id":   YT_VIDEO,
         "return_url":    RETURN_URL,
-        "login_url":     f"{NUTS_AUTH}/login?return_url={RETURN_URL}",
+        "login_url":     _login_url(),
+        "auth_required": AUTH_ENABLED,
+        "grub_enabled":  GRUB_ENABLED,
     }
 
 
@@ -188,7 +234,7 @@ async def news(
     claims = await _verify(token)
     if not claims:
         return JSONResponse(
-            {"error": "unauthenticated", "login_url": f"{NUTS_AUTH}/login?return_url={RETURN_URL}"},
+            {"error": "unauthenticated", "login_url": _login_url()},
             status_code=401,
         )
 
@@ -198,7 +244,10 @@ async def news(
         return _cache[key]["data"]
 
     try:
-        body = await _fetch_via_grub(topic, token)
+        if GRUB_ENABLED:
+            body = await _fetch_via_grub(topic, token)
+        else:
+            body = await _fetch_direct(topic)
         stories = _parse_rss(body) if "<item" in body else []
     except HTTPException as e:
         return JSONResponse({"error": "crawl failed", "detail": e.detail}, status_code=502)

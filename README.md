@@ -4,9 +4,53 @@ Google News, rendered as a Star Wars opening crawl.
 
 Live at **[force.nuts.services](https://force.nuts.services)**.
 
-Sign in (via `auth.nuts.services`), pick a topic (defaults to **war**), and
-watch the day's headlines scroll into hyperspace over a starfield, with John
-Williams piped in from YouTube.
+Pick a topic (defaults to **war**) and watch the day's headlines scroll into
+hyperspace over a starfield, with John Williams piped in from YouTube.
+
+---
+
+## Quick start — run it locally, no auth, no extras
+
+```bash
+git clone https://github.com/kordless/force-news.git
+cd force-news
+
+python -m venv .venv
+# Linux/macOS:
+source .venv/bin/activate
+# Windows PowerShell:
+.venv\Scripts\Activate.ps1
+
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+```
+
+Open **<http://localhost:8080>**, hit **Engage**, watch the crawl.
+
+That's the whole local-dev story. **No login, no nuts.services account, no
+grub instance required.** Out of the box, with no env vars set:
+
+- **Auth is off** → no login prompt, the engage button just works
+- **Grub is off** → news.google.com's RSS feed is fetched directly via
+  HTTP. Same XML, same parser, no stealth browser in the loop.
+
+The defaults are tuned for "I just want to play with this". Production
+(`force.nuts.services`) explicitly opts back into both via env vars set
+by `deploy.sh`.
+
+### What gets toggled by what
+
+| Env var | Empty / unset | Set |
+|---|---|---|
+| `NUTS_AUTH_URL` | auth disabled (anonymous) | auth required — JWT validated against the URL |
+| `GRUB_URL` | direct RSS fetch via httpx | crawl through [grubcrawler](https://grub.nuts.services) on the user's bearer |
+
+You can also force-disable either even when its URL is set:
+
+| Override | Effect |
+|---|---|
+| `DISABLE_AUTH=true` | skip JWT validation, treat everyone as anonymous |
+| `DISABLE_GRUB=true` | bypass grub even if `GRUB_URL` is set; fetch RSS direct |
 
 ---
 
@@ -15,11 +59,12 @@ Williams piped in from YouTube.
 ```
 Browser
   ↓ Engage
-auth.nuts.services        ← JWT login (magic link / Google / GitHub)
+[ optional ] auth.nuts.services        ← JWT login if AUTH is on
   ↓ token in URL fragment
-force.nuts.services/api/news?topic=…
-  ↓ user's bearer
-grub.nuts.services/api/crawl  ← target: news.google.com/rss/search?q=…
+force.../api/news?topic=…
+  ↓ [ if GRUB ] user's bearer
+  ↓ [ else ] httpx direct
+news.google.com/rss/search?q=…
   ↓ XML
   → parse <item> blocks → JSON
   → render as Star Wars crawl
@@ -29,8 +74,8 @@ grub.nuts.services/api/crawl  ← target: news.google.com/rss/search?q=…
 
 - **FastAPI** + **uvicorn** behind a single static HTML/CSS/JS frontend
 - Hosted on **Google Cloud Run** (canonical: `gnosis-459403`, `us-central1`)
-- Auth via [nuts-auth](https://auth.nuts.services) — bearer JWT, validated server-side
-- News fetched via [grubcrawler](https://grub.nuts.services) on the user's same bearer
+- Optional auth via [nuts-auth](https://auth.nuts.services) — bearer JWT, validated server-side
+- Optional crawl via [grubcrawler](https://grub.nuts.services) on the user's same bearer
 - Server-side cache on news payloads: 5 min per topic
 - YouTube IFrame Player API for both background visual + music (two players)
 
@@ -39,7 +84,7 @@ grub.nuts.services/api/crawl  ← target: news.google.com/rss/search?q=…
 ```
 app/
 ├── __init__.py
-├── main.py              ← FastAPI routes + grub bridge + RSS parser
+├── main.py              ← FastAPI routes + grub bridge + RSS parser + auth gate
 └── static/
     ├── show.html        ← splash + prelude + logo bloom + crawl + controls
     ├── stars.png        ← background starfield
@@ -51,103 +96,58 @@ requirements.txt
 
 ---
 
-## Run it yourself
+## Other ways to run it
 
-You have three ways to run force locally: **bare Python**, **Docker**, or
-**deploy a fork to your own Cloud Run project**. All three need an account
-on [nuts.services](https://nuts.services) so the crawl can flow through
-the same `auth → grub` pipeline that the hosted version uses. (Self-hosting
-auth + grub is doable but out of scope for this README — see
-[Going fully sovereign](#going-fully-sovereign) at the bottom.)
-
-### Prerequisites
-
-1. **A nuts.services account.** Sign in once at
-   [auth.nuts.services](https://auth.nuts.services) (magic link, Google,
-   or GitHub). You don't need to do anything else — the JWT-based browser
-   login flow will work out of the box once your local URL is the return target.
-2. **Python 3.12+** (for bare-Python run) or **Docker** (for the container
-   path) or **gcloud CLI authenticated to your GCP project** (for the
-   Cloud Run path).
-
-### Path A — bare Python
-
-```bash
-git clone https://github.com/kordless/force-news.git
-cd force-news
-
-python -m venv .venv
-# Linux/macOS:
-source .venv/bin/activate
-# Windows (PowerShell):
-.venv\Scripts\Activate.ps1
-
-pip install -r requirements.txt
-```
-
-Then start the server with the **return URL pointing at localhost**:
-
-```bash
-# Linux/macOS
-RETURN_URL="http://localhost:8080/auth" uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
-
-# Windows PowerShell
-$env:RETURN_URL = "http://localhost:8080/auth"
-uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
-```
-
-Open <http://localhost:8080> in a browser. Engage → log in at
-auth.nuts.services → land back on `localhost:8080/auth#token=…` →
-news fetches via grub.nuts.services and the crawl runs.
-
-### Path B — Docker
+### Docker
 
 ```bash
 docker build -t force-news .
-
-docker run --rm -p 8080:8080 \
-    -e RETURN_URL="http://localhost:8080/auth" \
-    -e DEFAULT_TOPIC="war" \
-    force-news
+docker run --rm -p 8080:8080 force-news
 ```
 
-Same as Path A but containerized. Open <http://localhost:8080>.
+Same defaults — no auth, no grub. Open <http://localhost:8080>.
 
-### Path C — deploy to your own Cloud Run
+Add `-e DEFAULT_TOPIC=mars` (or any other env var below) to tune the run.
 
-If you want force running at your own domain (e.g. `force.example.com`):
+### Local with the hosted nuts.services backends
 
-1. **Fork the repo** and clone your fork.
+If you want to test the full pipeline (auth + grub) against a local server:
 
-2. **Edit `deploy.sh`** at the top:
+```bash
+NUTS_AUTH_URL=https://auth.nuts.services \
+GRUB_URL=https://grub.nuts.services \
+RETURN_URL=http://localhost:8080/auth \
+uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+```
+
+Caveat: `auth.nuts.services` maintains a `CORS_ORIGINS` allowlist. Until
+your local origin is added (or you self-host nuts-auth), the login bounce
+back to `localhost:8080` will fail. Easiest workaround: leave
+`NUTS_AUTH_URL` unset and run anonymous.
+
+### Deploy a fork to your own Cloud Run
+
+1. Fork the repo and clone your fork.
+2. Edit `deploy.sh` at the top:
    ```bash
    PROJECT_ID="your-gcp-project"
-   REGION="us-central1"          # or any region you prefer
+   REGION="us-central1"
    SERVICE="force"
-   DOMAIN="force.example.com"    # your domain
+   DOMAIN="force.example.com"
    ```
-
-3. **Edit the deploy script's `--set-env-vars` line** so `RETURN_URL`
-   points at your domain's `/auth`:
+3. Edit the `--set-env-vars` line. If you want a public anonymous deploy,
+   drop `NUTS_AUTH_URL` and `GRUB_URL` and the service runs against direct
+   RSS with no login. If you want auth + crawl, point the URLs at services
+   you control:
    ```
-   RETURN_URL=https://force.example.com/auth
+   NUTS_AUTH_URL=https://auth.example.com,GRUB_URL=https://grub.example.com,RETURN_URL=https://force.example.com/auth
    ```
-
-4. **Run:**
+4. Run:
    ```bash
    bash deploy.sh
    ```
-   This builds via Cloud Build, deploys to Cloud Run, and creates the
-   domain mapping (idempotent).
-
-5. **Add the CNAME DNS record** the script prints —
-   `force CNAME ghs.googlehosted.com.` — at your DNS provider. Cert
-   provisions automatically in 5–15 minutes.
-
-6. **Ask nuts-auth to allow your origin.** The hosted `auth.nuts.services`
-   maintains a `CORS_ORIGINS` allowlist. Open an issue (or DM Kord) with
-   your domain and it'll be added. **Until that's in, the login redirect
-   back to your origin will fail.**
+   Cloud Build, deploy, domain mapping. Add the printed `CNAME` to DNS;
+   cert provisions in 5–15 min.
 
 ---
 
@@ -155,76 +155,56 @@ If you want force running at your own domain (e.g. `force.example.com`):
 
 | Var | Default | What |
 |---|---|---|
-| `NUTS_AUTH_URL` | `https://auth.nuts.services` | Auth backend. Point at your own nuts-auth instance to self-host identity. |
-| `GRUB_URL` | `https://grub.nuts.services` | Crawler backend. Point at your own grub instance for sovereign crawling. |
-| `RETURN_URL` | `https://force.nuts.services/auth` | OAuth callback. **Must match the origin you're serving from**, including scheme + port for local. |
+| `NUTS_AUTH_URL` | *(empty → auth off)* | Auth backend. Empty means anonymous mode. Point at your own nuts-auth instance to self-host identity. |
+| `GRUB_URL` | *(empty → direct fetch)* | Crawler backend. Empty means httpx fetches news.google.com/rss directly. Point at your own grub instance for sovereign crawling. |
+| `RETURN_URL` | `http://localhost:8080/auth` | OAuth callback URL. **Must match the origin you're serving from** (scheme + host + port). Only used when auth is on. |
+| `DISABLE_AUTH` | `false` | Force auth off even if `NUTS_AUTH_URL` is set. |
+| `DISABLE_GRUB` | `false` | Force grub off even if `GRUB_URL` is set. |
 | `DEFAULT_TOPIC` | `war` | What the topic input pre-fills with. |
-| `YT_VIDEO_ID` | `_D0ZQPqeJkk` | YouTube video for the soundtrack. Swap to any video ID. |
+| `YT_VIDEO_ID` | `_D0ZQPqeJkk` | YouTube video ID for the soundtrack. Swap freely. |
 | `CACHE_TTL` | `300` | Seconds to cache news payloads per topic (server-side). |
-
-Set them in your shell, in `docker run -e …`, or via
-`gcloud run services update --update-env-vars …`.
-
----
-
-## Going fully sovereign
-
-If you want zero dependency on the hosted nuts.services fleet:
-
-1. **Self-host auth.** Stand up your own [nuts-auth](https://github.com/DeepBlueDynamics/nuts-auth)
-   instance — set `NUTS_AUTH_URL` to point at it and `RETURN_URL` to your
-   force origin. Add force's origin to nuts-auth's `CORS_ORIGINS`.
-2. **Self-host the crawler.** Run your own
-   [grubcrawler](https://github.com/DeepBlueDynamics/grub-crawler) and set
-   `GRUB_URL` to it. Force passes the user's bearer through to grub
-   unchanged, so the same auth backend has to validate it on both ends.
-3. **Or skip auth entirely.** If you want a public demo without login,
-   open `app/main.py`, find the `_verify()` call in the `/api/news`
-   handler, and short-circuit it to always return a dummy claims dict.
-   You'll also want to add a rate limiter — `news.google.com` will not
-   thank you otherwise.
 
 ---
 
 ## Troubleshooting
 
+**"It just shows the splash and Engage spins forever."**
+Open DevTools → Network and click Engage. If `/api/news` returns 502,
+either Google News blocked the IP (rare on cold start) or the RSS feed is
+empty for that topic. Try a more common topic.
+
+**"It says 'sign in to engage' but I'm running locally — why?"**
+You've got `NUTS_AUTH_URL` set in your shell or a `.env`. Unset it (or
+add `DISABLE_AUTH=true`) and restart.
+
 **"Login bounces back but says auth required."**
-The `RETURN_URL` env var doesn't match the origin the browser is on. They
-must match exactly (scheme, host, port). If you're on `http://localhost:8080`
-the env must be `http://localhost:8080/auth`, not `http://127.0.0.1:8080/auth`
-and not `https://...`.
+`RETURN_URL` doesn't match the origin the browser is on. They must match
+exactly — scheme, host, port. `http://localhost:8080` ≠ `http://127.0.0.1:8080`.
 
 **"Login redirect fails with CORS / Origin not allowed."**
-nuts-auth maintains an allowlist of `CORS_ORIGINS`. Your origin isn't in it.
-Either ask to be added, run your own nuts-auth, or use the hosted
-`force.nuts.services`.
+The hosted `auth.nuts.services` has an allowlist of `CORS_ORIGINS`. Your
+origin isn't on it. Either ask to be added, run your own nuts-auth, or
+just unset `NUTS_AUTH_URL` and run anonymous.
 
-**"No stories returned."**
-Either grub failed to crawl Google News (rare — grub uses Camoufox stealth)
-or the topic is so niche the RSS feed comes back empty. Try a more common
-topic.
-
-**"Music plays for 'war' but not for other topics."**
-Should be fixed as of the latest revision — earlier code unmuted the
-YouTube player after grub returned, which only worked when grub's response
-came back fast enough to still be inside the browser's user-activation
-window. The current code claims audio permission synchronously on the
-Engage click (`unMute()` + `setVolume(0)`), then swells the volume up to
-100 after grub returns.
+**"Music plays for 'war' but not other topics."**
+Was a real bug — should be fixed in the current revision. Earlier code
+unmuted the YouTube player after grub returned, which only worked when
+grub responded inside the browser's user-activation window (~5s from
+click). Current code claims audio permission synchronously on the Engage
+click and swells the volume from 0 → 100 when news arrives.
 
 ---
 
 ## Security note
 
-The current flow accepts the bearer token via a URL `?token=` redirect
-from `auth.nuts.services`, then immediately 302's to a `#fragment` and
-stashes it in `localStorage`. That leaves a single `/auth?token=…` line
-in the Cloud Run access log per login; everything afterward is
-fragment-only. To fully close that, `auth.nuts.services` would need to
-redirect with `#token=` instead of `?token=`.
+When auth is on, force accepts the bearer token via a URL `?token=`
+redirect from `auth.nuts.services`, then immediately 302's to a
+`#fragment` and stashes it in `localStorage`. That leaves a single
+`/auth?token=…` line in the Cloud Run access log per login; everything
+afterward is fragment-only.
 
 `Referrer-Policy: strict-origin-when-cross-origin` is set on every
-response so the token never leaks via `Referer` to YouTube / Google Fonts
+response so the token can't leak via `Referer` to YouTube / Google Fonts
 during the brief moment it's in the URL.
 
 ---
