@@ -109,6 +109,50 @@ Same defaults — no auth, no grub. Open <http://localhost:8080>.
 
 Add `-e DEFAULT_TOPIC=mars` (or any other env var below) to tune the run.
 
+### Run grub locally too (the full sovereign loop)
+
+If you want the *whole* pipeline on your laptop — no hosted backend in
+the picture, the crawl going through a real stealth browser — spin up
+[grubcrawler](https://github.com/DeepBlueDynamics/grub-crawler) on Docker
+and point force at it:
+
+```bash
+# 1. Start grub on port 6792 with auth turned off
+docker run -d --name grub \
+    -p 6792:6792 \
+    -e DISABLE_AUTH=true \
+    deepbluedynamics/grubcrawler
+
+# 2. Start force pointing at it
+GRUB_URL=http://localhost:6792 \
+uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+```
+
+Engage → force calls `http://localhost:6792/api/crawl` →
+grub's Camoufox stealth browser actually drives news.google.com → result
+flows back. You can watch grub's logs with `docker logs -f grub`.
+
+**Cleanup when you're done:** `docker stop grub && docker rm grub`.
+
+#### Both in containers? Use a shared network.
+
+If you also `docker run` force (instead of running it bare), you need
+both containers on the same Docker network so force can reach grub by
+container name:
+
+```bash
+docker network create force-net
+docker run -d --name grub --network force-net \
+    -e DISABLE_AUTH=true \
+    deepbluedynamics/grubcrawler
+docker run --rm --name force --network force-net -p 8080:8080 \
+    -e GRUB_URL=http://grub:6792 \
+    force-news
+```
+
+(Inside the shared network `grub` resolves as a hostname pointing at the
+grub container.)
+
 ### Local with the hosted nuts.services backends
 
 If you want to test the full pipeline (auth + grub) against a local server:
