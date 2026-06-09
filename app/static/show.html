@@ -62,6 +62,8 @@
   #status.err{color:#ff5555}
   #login-pin{position:fixed;top:20px;right:24px;font-family:'News Cycle',sans-serif;font-size:11px;letter-spacing:0.2em;color:#4a8bdf;text-transform:uppercase;z-index:101}
   #login-pin a{color:#feda4a;text-decoration:none;border-bottom:1px solid #feda4a}
+  #repo-pin{position:fixed;bottom:20px;left:24px;font-family:'News Cycle',sans-serif;font-size:10px;letter-spacing:0.18em;color:#2f4a73;text-transform:lowercase;z-index:101;text-decoration:none;transition:color 0.2s}
+  #repo-pin:hover{color:#feda4a}
 
   /* ── opening prelude (blue text) ─────────────────────── */
   #prelude{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;z-index:80;opacity:0;pointer-events:none}
@@ -132,6 +134,7 @@
 </div>
 
 <div id="login-pin"><span id="login-pin-text">checking signal…</span></div>
+<a id="repo-pin" href="https://github.com/kordless/force-news" target="_blank" rel="noopener noreferrer">github.com/kordless/force-news ↗</a>
 
 <div id="splash">
     <p class="tag">force.nuts.services</p>
@@ -351,17 +354,11 @@ function startSequence() {
         $("#prelude").classList.remove("show");
         $("#logo").classList.add("show");
 
-        // 1. Restart and play the theme music exactly when the logo blooms.
-        if (YT_PLAYER && typeof YT_PLAYER.playVideo === "function") {
-            try {
-                YT_PLAYER.seekTo(0, true);
-                YT_PLAYER.unMute();
-                YT_PLAYER.setVolume(100);
-                YT_PLAYER.playVideo();
-            } catch (err) {}
-        }
+        // Do not touch YT_PLAYER here — it's already playing from the
+        // Engage click. Calling seekTo/playVideo here would restart the
+        // track at the moment of the logo bloom.
 
-        // 2. Keep the final video hidden and stopped until the crawl handoff.
+        // Keep the final video hidden and stopped until the crawl handoff.
         if (BG_PLAYER && typeof BG_PLAYER.playVideo === "function") {
             try {
                 BG_PLAYER.mute();
@@ -508,7 +505,55 @@ function setupControls() {
         muted = !muted;
         applyMuteState();
     });
-    $("#restart").addEventListener("click", () => location.reload());
+    $("#restart").addEventListener("click", softRestart);
+}
+
+// Soft restart — DON'T location.reload(). Reloading destroys the YouTube
+// player, drops user-activation, and the next Engage click races the YT
+// IFrame API's re-init: if you click before the player is reconstructed,
+// unMute() targets a still-undefined YT_PLAYER and silently no-ops, so
+// you get the crawl with no sound. Resetting state in place keeps the
+// already-initialized player alive and reusable.
+function softRestart() {
+    // 1. Stop animation/monitor timers
+    if (crawlMonitorInterval) {
+        clearInterval(crawlMonitorInterval);
+        crawlMonitorInterval = null;
+    }
+
+    // 2. Tear down crawl + final-video DOM state
+    $("#crawl-wrap").classList.remove("go");
+    const crawl = $("#crawl");
+    crawl.innerHTML = "";
+    // Force the CSS animation to restart on the next engage. Just clearing
+    // innerHTML keeps the animation locked at its end state (forwards fill
+    // mode → text frozen offscreen above), so the next render would put the
+    // stories in place but invisible.
+    crawl.style.animation = "none";
+    void crawl.offsetHeight;                 // force reflow
+    crawl.style.animation = "";              // restore to stylesheet default
+    $("#fade").classList.remove("go");
+    $("#controls").classList.remove("go");
+    $("#logo").classList.remove("show");
+    $("#prelude").classList.remove("show");
+
+    const videoBg = $("#video-bg");
+    if (videoBg) videoBg.classList.remove("show");
+
+    // 3. Bring back splash + re-enable Engage button
+    $("#splash").style.display = "";
+    const btn = $("#engage");
+    btn.disabled = false;
+    setStatus("");
+
+    // 4. Pause music and bg so they're silent until the next Engage click.
+    //    (Don't destroy them — that's the whole point.)
+    if (YT_PLAYER && typeof YT_PLAYER.pauseVideo === "function") {
+        try { YT_PLAYER.pauseVideo(); YT_PLAYER.seekTo(0, true); } catch (e) {}
+    }
+    if (BG_PLAYER && typeof BG_PLAYER.pauseVideo === "function") {
+        try { BG_PLAYER.pauseVideo(); } catch (e) {}
+    }
 }
 
 function setStatus(msg, isErr) {
