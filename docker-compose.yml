@@ -1,0 +1,27 @@
+services:
+  # The stealth crawler — drives news.google.com on force's behalf.
+  # Auth is disabled because we're local + anonymous.
+  grub:
+    image: deepbluedynamics/grubcrawler:latest
+    container_name: force-grub
+    restart: unless-stopped
+    ports:
+      - "6792:6792"
+    environment:
+      - DISABLE_AUTH=true
+      - PORT=6792
+
+  # The frontend — splash → crawl → fade. Talks to grub by container name.
+  force:
+    build: .
+    container_name: force-app
+    restart: unless-stopped
+    depends_on:
+      - grub
+    ports:
+      - "8080:8080"
+    environment:
+      - GRUB_URL=http://grub:6792
+      - RETURN_URL=http://localhost:8080/auth
+      - DEFAULT_TOPIC=war
+      # NUTS_AUTH_URL deliberately unset → auth off → no login wall.

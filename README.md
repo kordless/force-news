@@ -1,238 +1,52 @@
 # force — News from a Far Galaxy
 
-Google News, rendered as a Star Wars opening crawl.
+Google News, rendered as a Star Wars opening crawl. Live at **[force.nuts.services](https://force.nuts.services)**.
 
-Live at **[force.nuts.services](https://force.nuts.services)**.
+Pick a topic, hit Engage, watch the headlines roll into hyperspace.
 
-Pick a topic (defaults to **war**) and watch the day's headlines scroll into
-hyperspace over a starfield, with John Williams piped in from YouTube.
-
----
-
-## Quick start — run it locally, the whole stack, no accounts
-
-The full sovereign loop on your laptop: a Docker container for grub (the
-crawler) and a Python venv for force (the frontend). Both with auth off.
-No login, no nuts.services account, no external service in the picture.
+## Quick start
 
 ```bash
-# 1. grub on Docker — the stealth crawler, on port 6792, no auth
-docker run -d --name grub -p 6792:6792 \
-    -e DISABLE_AUTH=true \
-    deepbluedynamics/grubcrawler
-
-# 2. force in a venv — the frontend, on port 8080, pointed at grub
 git clone https://github.com/kordless/force-news.git
 cd force-news
-python -m venv .venv
-# Linux/macOS:        source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-
-GRUB_URL=http://localhost:6792 \
-uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+bash deploy.sh
 ```
 
-Open **<http://localhost:8080>**, hit **Engage**, watch the crawl.
+Open **<http://localhost:8080>**. Done.
 
-That's it. Force calls grub at `localhost:6792`, grub drives news.google.com
-with its Camoufox stealth browser, the headlines roll up. Watch the crawl
-happen with `docker logs -f grub`.
+That's a `docker compose up` of two containers:
 
-Stop when you're done: `docker stop grub && docker rm grub`.
+- **[grubcrawler](https://github.com/DeepBlueDynamics/grub-crawler)** on `localhost:6792` (the stealth crawler that actually fetches news.google.com)
+- **force** on `localhost:8080` (this app — splash → crawl)
 
-### What's on, what's off
+Tear it down: `bash deploy.sh stop`. Tail logs: `bash deploy.sh logs`.
 
-| Mode | Auth | Crawl |
-|---|---|---|
-| Local quick-start (above) | OFF — anonymous | grub at localhost:6792 |
-| Production (`force.nuts.services`) | ON — JWT via auth.nuts.services | grub at grub.nuts.services |
+## Ship to Cloud Run
 
-### What gets toggled by what
+```bash
+bash deploy.sh cloudrun
+```
 
-| Env var | Empty / unset | Set |
-|---|---|---|
-| `NUTS_AUTH_URL` | auth disabled (anonymous) | auth required — JWT validated against the URL |
-| `GRUB_URL` | direct RSS fetch via httpx | crawl through grub on the user's bearer |
-
-Force overrides if the URL is set but you want the mode off:
-
-| Override | Effect |
-|---|---|
-| `DISABLE_AUTH=true` | skip JWT validation, treat everyone as anonymous |
-| `DISABLE_GRUB=true` | bypass grub even if `GRUB_URL` is set; fetch RSS direct |
-
----
+Builds via Cloud Build, deploys to Cloud Run, maps `force.nuts.services`. Defaults are tuned for the DeepBlue Dynamics GCP project — override with `PROJECT_ID=… DOMAIN=… bash deploy.sh cloudrun`.
 
 ## How it works
 
 ```
-Browser
-  ↓ Engage
-[ optional ] auth.nuts.services        ← JWT login if AUTH is on
-  ↓ token in URL fragment
-force.../api/news?topic=…
-  ↓ [ if GRUB ] user's bearer
-  ↓ [ else ] httpx direct
-news.google.com/rss/search?q=…
-  ↓ XML
-  → parse <item> blocks → JSON
-  → render as Star Wars crawl
+Browser  →  force/api/news  →  grub/api/crawl  →  news.google.com/rss  →  parsed → JSON → crawl
 ```
 
-## Stack
+In production force is gated behind a JWT login via [auth.nuts.services](https://auth.nuts.services); locally auth is off.
 
-- **FastAPI** + **uvicorn** behind a single static HTML/CSS/JS frontend
-- Hosted on **Google Cloud Run** (canonical: `gnosis-459403`, `us-central1`)
-- Optional auth via [nuts-auth](https://auth.nuts.services) — bearer JWT, validated server-side
-- Optional crawl via [grubcrawler](https://grub.nuts.services) on the user's same bearer
-- Server-side cache on news payloads: 5 min per topic
-- YouTube IFrame Player API for both background visual + music (two players)
-
-## Layout
-
-```
-app/
-├── __init__.py
-├── main.py              ← FastAPI routes + grub bridge + RSS parser + auth gate
-└── static/
-    ├── show.html        ← splash + prelude + logo bloom + crawl + controls
-    ├── stars.png        ← background starfield
-    └── og.png           ← OG / Twitter card image
-Dockerfile               ← python:3.12-slim + uvicorn
-deploy.sh                ← gcloud builds submit + gcloud run deploy
-requirements.txt
-```
-
----
-
-## Other ways to run it
-
-### Docker
-
-```bash
-docker build -t force-news .
-docker run --rm -p 8080:8080 force-news
-```
-
-Same defaults — no auth, no grub. Open <http://localhost:8080>.
-
-Add `-e DEFAULT_TOPIC=mars` (or any other env var below) to tune the run.
-
-### Run grub locally too (the full sovereign loop)
-
-If you want the *whole* pipeline on your laptop — no hosted backend in
-the picture, the crawl going through a real stealth browser — spin up
-[grubcrawler](https://github.com/DeepBlueDynamics/grub-crawler) on Docker
-and point force at it:
-
-```bash
-# 1. Start grub on port 6792 with auth turned off
-docker run -d --name grub \
-    -p 6792:6792 \
-    -e DISABLE_AUTH=true \
-    deepbluedynamics/grubcrawler
-
-# 2. Start force pointing at it
-GRUB_URL=http://localhost:6792 \
-uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
-```
-
-Engage → force calls `http://localhost:6792/api/crawl` →
-grub's Camoufox stealth browser actually drives news.google.com → result
-flows back. You can watch grub's logs with `docker logs -f grub`.
-
-**Cleanup when you're done:** `docker stop grub && docker rm grub`.
-
-#### Both in containers? Use a shared network.
-
-If you also `docker run` force (instead of running it bare), you need
-both containers on the same Docker network so force can reach grub by
-container name:
-
-```bash
-docker network create force-net
-docker run -d --name grub --network force-net \
-    -e DISABLE_AUTH=true \
-    deepbluedynamics/grubcrawler
-docker run --rm --name force --network force-net -p 8080:8080 \
-    -e GRUB_URL=http://grub:6792 \
-    force-news
-```
-
-(Inside the shared network `grub` resolves as a hostname pointing at the
-grub container.)
-
-### Local with the hosted nuts.services backends
-
-If you want to test the full pipeline (auth + grub) against a local server:
-
-```bash
-NUTS_AUTH_URL=https://auth.nuts.services \
-GRUB_URL=https://grub.nuts.services \
-RETURN_URL=http://localhost:8080/auth \
-uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
-```
-
-Caveat: `auth.nuts.services` maintains a `CORS_ORIGINS` allowlist. Until
-your local origin is added (or you self-host nuts-auth), the login bounce
-back to `localhost:8080` will fail. Easiest workaround: leave
-`NUTS_AUTH_URL` unset and run anonymous.
-
-### Deploy a fork to your own Cloud Run
-
-1. Fork the repo and clone your fork.
-2. Edit `deploy.sh` at the top:
-   ```bash
-   PROJECT_ID="your-gcp-project"
-   REGION="us-central1"
-   SERVICE="force"
-   DOMAIN="force.example.com"
-   ```
-3. Edit the `--set-env-vars` line. If you want a public anonymous deploy,
-   drop `NUTS_AUTH_URL` and `GRUB_URL` and the service runs against direct
-   RSS with no login. If you want auth + crawl, point the URLs at services
-   you control:
-   ```
-   NUTS_AUTH_URL=https://auth.example.com,GRUB_URL=https://grub.example.com,RETURN_URL=https://force.example.com/auth
-   ```
-4. Run:
-   ```bash
-   bash deploy.sh
-   ```
-   Cloud Build, deploy, domain mapping. Add the printed `CNAME` to DNS;
-   cert provisions in 5–15 min.
-
----
-
-## Environment variables
+## Env vars
 
 | Var | Default | What |
 |---|---|---|
-| `NUTS_AUTH_URL` | *(empty → auth off)* | Auth backend. Empty means anonymous mode. Point at your own nuts-auth instance to self-host identity. |
-| `GRUB_URL` | *(empty → direct fetch)* | Crawler backend. Empty means httpx fetches news.google.com/rss directly. Point at your own grub instance for sovereign crawling. |
-| `RETURN_URL` | `http://localhost:8080/auth` | OAuth callback URL. **Must match the origin you're serving from** (scheme + host + port). Only used when auth is on. |
-| `DISABLE_AUTH` | `false` | Force auth off even if `NUTS_AUTH_URL` is set. |
-| `DISABLE_GRUB` | `false` | Force grub off even if `GRUB_URL` is set. |
-| `DEFAULT_TOPIC` | `war` | What the topic input pre-fills with. |
-| `YT_VIDEO_ID` | `_D0ZQPqeJkk` | YouTube video ID for the soundtrack. Swap freely. |
-| `CACHE_TTL` | `300` | Seconds to cache news payloads per topic (server-side). |
-
----
-
-## Security note
-
-When auth is on, force accepts the bearer token via a URL `?token=`
-redirect from `auth.nuts.services`, then immediately 302's to a
-`#fragment` and stashes it in `localStorage`. That leaves a single
-`/auth?token=…` line in the Cloud Run access log per login; everything
-afterward is fragment-only.
-
-`Referrer-Policy: strict-origin-when-cross-origin` is set on every
-response so the token can't leak via `Referer` to YouTube / Google Fonts
-during the brief moment it's in the URL.
-
----
+| `GRUB_URL` | `http://grub:6792` (compose) | Crawler URL. |
+| `NUTS_AUTH_URL` | *(empty → off)* | Auth backend. Set to enable login. |
+| `RETURN_URL` | `http://localhost:8080/auth` | Auth callback URL. Must match the origin you're serving from. |
+| `DEFAULT_TOPIC` | `war` | Pre-fills the topic input. |
+| `YT_VIDEO_ID` | `_D0ZQPqeJkk` | YouTube video for the soundtrack. |
+| `CACHE_TTL` | `300` | Server-side cache (seconds, per topic). |
 
 ## License
 
