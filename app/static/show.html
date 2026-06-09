@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Set Referrer Policy to strict-origin-when-cross-origin to allow YouTube embeds to verify the origin
+     while still hiding path, query, and hash info from third-party requests. -->
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>NUTS NEWS — News from a Far Galaxy</title>
+
+<!-- Favicon: yellow star pattern on black, inline SVG. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23000'/%3E%3Cg fill='%23feda4a'%3E%3Cpolygon points='32,8 34,18 44,18 36,24 39,34 32,28 25,34 28,24 20,18 30,18'/%3E%3Ccircle cx='12' cy='12' r='1.5'/%3E%3Ccircle cx='52' cy='14' r='1.2'/%3E%3Ccircle cx='10' cy='40' r='1'/%3E%3Ccircle cx='56' cy='44' r='1.5'/%3E%3Ccircle cx='20' cy='52' r='1.2'/%3E%3Ccircle cx='44' cy='54' r='1'/%3E%3Ccircle cx='32' cy='48' r='1'/%3E%3C/g%3E%3C/svg%3E">
+
+<!-- OG / Twitter / LinkedIn card -->
+<meta name="description" content="Google News, rendered as a Star Wars crawl. Sign in, pick a topic, watch the headlines roll into hyperspace.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://force.nuts.services/">
+<meta property="og:site_name" content="NUTS NEWS">
+<meta property="og:title" content="NUTS NEWS — News from a Far Galaxy">
+<meta property="og:description" content="Google News, rendered as a Star Wars crawl. Sign in, pick a topic, watch the headlines roll into hyperspace.">
+<meta property="og:image" content="https://force.nuts.services/static/og.png">
+<meta property="og:image:secure_url" content="https://force.nuts.services/static/og.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NUTS NEWS — News from a far, far galaxy">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NUTS NEWS — News from a Far Galaxy">
+<meta name="twitter:description" content="Google News, rendered as a Star Wars crawl. Sign in, pick a topic, watch the headlines roll into hyperspace.">
+<meta name="twitter:image" content="https://force.nuts.services/static/og.png">
+<meta name="twitter:image:alt" content="NUTS NEWS — News from a far, far galaxy">
+<link href="https://fonts.googleapis.com/css2?family=Pathway+Gothic+One&family=News+Cycle:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#000;color:#feda4a;font-family:'News Cycle',sans-serif;overflow:hidden}
+
+  :root{
+    --crawl-tilt:25deg;
+    --crawl-perspective:500px;
+    --crawl-duration:120s;
+    --stars-bg:url("/static/stars.png");
+  }
+
+  /* ── background layers ─────────────────────────────────── */
+  #bg{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;background:#000 var(--stars-bg) center/cover no-repeat}
+  #video-bg{position:fixed;inset:0;z-index:10;overflow:hidden;pointer-events:none;background:#000;opacity:0;transition:opacity 3s ease}
+  #video-bg.show{opacity:1}
+  #video-bg iframe{position:absolute;top:50%;left:50%;width:max(100vw,177.78vh);height:max(100vh,56.25vw);transform:translate(-50%,-50%);border:0;pointer-events:none}
+
+  /* ── splash ──────────────────────────────────────────── */
+  /* Slightly translucent so the stars background shows through. */
+  #splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:32px;background:radial-gradient(circle at center,rgba(0,0,0,0.65) 0%,rgba(0,0,0,0.92) 80%);z-index:100;padding:24px;backdrop-filter:blur(2px)}
+  #splash .tag{font-family:'News Cycle',sans-serif;font-size:13px;letter-spacing:0.45em;color:#4a8bdf;text-transform:uppercase;text-align:center}
+  #splash h1{font-family:'Pathway Gothic One',sans-serif;font-size:clamp(40px,8vw,84px);color:#4a8bdf;letter-spacing:0.18em;text-align:center;line-height:1}
+  #splash .row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center}
+  #splash input{background:#000;color:#feda4a;border:1px solid #feda4a;padding:14px 18px;font-family:'News Cycle',sans-serif;font-size:18px;letter-spacing:0.08em;text-transform:uppercase;width:240px;text-align:center;outline:none}
+  #splash input:focus{box-shadow:0 0 0 1px #feda4a inset}
+  #engage{background:transparent;color:#feda4a;border:1px solid #feda4a;padding:14px 30px;font-family:'News Cycle',sans-serif;font-weight:700;font-size:18px;letter-spacing:0.3em;text-transform:uppercase;cursor:pointer;transition:all 0.2s}
+  #engage:hover{background:#feda4a;color:#000;letter-spacing:0.4em}
+  #engage:disabled{opacity:0.4;cursor:wait}
+  #status{font-family:'News Cycle',sans-serif;font-size:13px;letter-spacing:0.25em;color:#666;text-align:center;text-transform:uppercase;min-height:18px}
+  #status.err{color:#ff5555}
+  #login-pin{position:fixed;top:20px;right:24px;font-family:'News Cycle',sans-serif;font-size:11px;letter-spacing:0.2em;color:#4a8bdf;text-transform:uppercase;z-index:101}
+  #login-pin a{color:#feda4a;text-decoration:none;border-bottom:1px solid #feda4a}
+
+  /* ── opening prelude (blue text) ─────────────────────── */
+  #prelude{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;z-index:80;opacity:0;pointer-events:none}
+  #prelude.show{opacity:1;animation:fadeInOut 9s linear forwards}
+  #prelude p{font-family:'News Cycle',sans-serif;font-size:clamp(20px,3vw,32px);color:#4a8bdf;text-align:center;line-height:1.5;max-width:760px}
+  @keyframes fadeInOut{0%{opacity:0}15%{opacity:1}85%{opacity:1}100%{opacity:0}}
+
+  /* ── logo bloom (yellow) ─────────────────────────────── */
+  #logo{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:75;opacity:0;pointer-events:none}
+  #logo.show{animation:logoBloom 8s ease-in forwards}
+  #logo h2{font-family:'Pathway Gothic One',sans-serif;font-weight:600;font-size:clamp(50px,10vw,120px);color:#feda4a;text-align:center;letter-spacing:0.05em;line-height:0.9;text-shadow:0 0 18px rgba(254,218,74,0.45)}
+  @keyframes logoBloom{0%{opacity:0;transform:scale(2)}18%{opacity:1}68%{opacity:1;transform:scale(0.28)}100%{opacity:0;transform:scale(0.18)}}
+
+  /* ── crawl ────────────────────────────────────────────── */
+  /* The CRUCIAL bit: perspective-origin: 50% 100% puts the vanishing point
+     at the bottom-center of the viewport, so text recedes UP and BACK into
+     the distance, the way Star Wars actually does it. Without this it just
+     scrolls flat. */
+  #crawl-wrap{position:fixed;inset:0;display:none;perspective:var(--crawl-perspective);perspective-origin:50% 48%;overflow:hidden;z-index:50;opacity:1;transition:opacity 3s ease;-webkit-mask-image:linear-gradient(to bottom,transparent 0%,rgba(0,0,0,0.15) 22%,rgba(0,0,0,0.6) 38%,#000 55%);mask-image:linear-gradient(to bottom,transparent 0%,rgba(0,0,0,0.15) 22%,rgba(0,0,0,0.6) 38%,#000 55%)}
+  #crawl-wrap.go{display:block}
+  #crawl{position:absolute;left:50%;bottom:0;width:min(72vw,1100px);color:#feda4a;font-family:'News Cycle',sans-serif;font-weight:700;font-size:clamp(58px,5.8vw,104px);text-align:justify;line-height:1.45;transform-origin:50% 100%;transform:translateX(-50%) rotateX(var(--crawl-tilt)) translateY(120%);animation:crawl var(--crawl-duration) linear forwards}
+  @keyframes crawl{0%{transform:translateX(-50%) rotateX(var(--crawl-tilt)) translateY(120%)}100%{transform:translateX(-50%) rotateX(var(--crawl-tilt)) translateY(-260%)}}
+  .ep{margin-bottom:1.4em;text-align:center;font-family:'Pathway Gothic One',sans-serif;font-weight:600;font-size:1.2em;letter-spacing:0.1em;line-height:1.1}
+  .ep .stardate{display:block;font-family:'News Cycle',sans-serif;font-size:0.5em;letter-spacing:0.5em;margin-top:0.4em;color:#feda4a}
+  .ep .topic{display:block;margin-top:0.4em;font-size:1.05em;letter-spacing:0.1em}
+  .story{margin-bottom:1.3em}
+  .story a{color:#feda4a;text-decoration:none;border-bottom:0}
+  .story a:hover{color:#fff}
+  .story .src{display:block;margin-top:0.25em;font-weight:400;font-size:0.45em;letter-spacing:0.4em;text-transform:uppercase;color:#bd9d34;text-align:right}
+  .end{margin-top:2em;text-align:center;font-family:'Pathway Gothic One',sans-serif;font-size:1.15em;letter-spacing:0.18em}
+
+  /* ── fade mask: text disappears around 1/4 from the top ─────── */
+  #fade {
+    position: fixed;
+    inset: 0 0 55vh 0;
+    background: linear-gradient(to bottom, #000 0%, #000 40%, transparent 100%);
+    z-index: 60;
+    pointer-events: none;
+    display: none;
+  }
+  #fade.go {
+    display: none;
+  }
+
+  @media (max-width: 700px) {
+    #crawl-wrap{perspective:440px;perspective-origin:50% 50%}
+    #crawl{width:88vw;font-size:clamp(34px,8vw,58px);line-height:1.35}
+    .story .src{font-size:0.4em;letter-spacing:0.24em}
+  }
+
+  /* ── youtube player ──────────────────────────────────── */
+  /* Off-screen but full-sized so the player engine doesn't refuse
+     to play (which it does when iframe dims are tiny / display:none). */
+  #yt{position:fixed;width:320px;height:180px;left:-9999px;top:0;pointer-events:none}
+
+  /* ── controls (top corners during crawl) ─────────────── */
+  #controls{position:fixed;top:20px;left:24px;z-index:70;display:none;font-family:'News Cycle',sans-serif;font-size:11px;letter-spacing:0.2em;color:#4a8bdf;text-transform:uppercase}
+  #controls.go{display:block}
+  #controls button{background:transparent;color:#4a8bdf;border:1px solid #4a8bdf;padding:6px 12px;font:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer;margin-right:8px}
+  #controls button:hover{background:#4a8bdf;color:#000}
+</style>
+</head>
+<body>
+
+<div id="bg"></div>
+<div id="video-bg">
+    <div id="bg-player"></div>
+</div>
+
+<div id="login-pin"><span id="login-pin-text">checking signal…</span></div>
+
+<div id="splash">
+    <p class="tag">force.nuts.services</p>
+    <h1>NUTS NEWS</h1>
+    <p class="tag">News from a far, far galaxy</p>
+    <div class="row">
+        <input id="topic" type="text" placeholder="war" maxlength="40">
+        <button id="engage">Engage</button>
+    </div>
+    <p id="status"></p>
+</div>
+
+<div id="prelude"><p>A long time ago in a galaxy far, far away…</p></div>
+<div id="logo"><h2>NUTS&nbsp;NEWS</h2></div>
+
+<div id="crawl-wrap">
+    <div id="crawl"></div>
+</div>
+<div id="fade"></div>
+
+<div id="controls">
+    <button id="mute-toggle">Sound: ON</button>
+    <button id="restart">Restart</button>
+</div>
+
+<!-- youtube iframe API -->
+<div id="yt"></div>
+<script src="https://www.youtube.com/iframe_api"></script>
+
+<script>
+let CFG = null;
+let YT_PLAYER = null;
+let BG_PLAYER = null;
+let YT_API_READY = false;
+let YT_PENDING = null;
+let TOKEN = null;
+
+const $ = sel => document.querySelector(sel);
+
+function tokenFromUrl() {
+    // Prefer fragment (set by /auth's 302 — never logged server-side).
+    let t = null;
+    if (location.hash && location.hash.length > 1) {
+        const hp = new URLSearchParams(location.hash.slice(1));
+        t = hp.get("token");
+    }
+    // Fall back to query string for any flow that bypasses /auth.
+    if (!t) {
+        const qp = new URLSearchParams(location.search);
+        t = qp.get("token");
+    }
+    if (t) {
+        localStorage.setItem("nuts_jwt", t);
+        // Wipe both query and hash from the address bar + history.
+        history.replaceState({}, "", location.pathname);
+        return t;
+    }
+    return null;
+}
+
+function getToken() {
+    return tokenFromUrl() || localStorage.getItem("nuts_jwt") || null;
+}
+
+async function loadCfg() {
+    const r = await fetch("/api/config");
+    CFG = await r.json();
+    $("#topic").placeholder = CFG.default_topic;
+    if (!$("#topic").value) $("#topic").value = CFG.default_topic;
+    initYT(CFG.yt_video_id);
+}
+
+function showLoginPin(loggedIn, subject) {
+    if (loggedIn) {
+        $("#login-pin-text").innerHTML = "&#9679; signed in" + (subject ? " · " + subject : "");
+    } else {
+        $("#login-pin-text").innerHTML = '<a href="' + CFG.login_url + '">sign in to engage</a>';
+    }
+}
+
+window.onYouTubeIframeAPIReady = function () {
+    YT_API_READY = true;
+    if (YT_PENDING) initYTNow(YT_PENDING);
+};
+
+function initYT(id) {
+    if (!YT_API_READY) { YT_PENDING = id; return; }
+    initYTNow(id);
+}
+
+function initYTNow(id) {
+    // 1. Initialize main theme music player (offscreen, hidden)
+    YT_PLAYER = new YT.Player("yt", {
+        height: "180",
+        width:  "320",
+        videoId: id,
+        host: "https://www.youtube-nocookie.com",
+        playerVars: {
+            autoplay: 1, controls: 0, loop: 1, playlist: id,
+            modestbranding: 1, rel: 0, disablekb: 1,
+            playsinline: 1, fs: 0, mute: 1,
+            enablejsapi: 1,
+            origin: window.location.origin,
+        },
+        events: {
+            onReady: e => {
+                try { e.target.mute(); e.target.playVideo(); } catch (err) {}
+            },
+            onError: e => console.warn("yt error code:", e.data),
+        }
+    });
+
+    // 2. Initialize background stars player
+    BG_PLAYER = new YT.Player("bg-player", {
+        host: "https://www.youtube-nocookie.com",
+        videoId: "tRX4JFWffkM",
+        playerVars: {
+            autoplay: 1,
+            controls: 0,
+            loop: 1,
+            playlist: "tRX4JFWffkM",
+            modestbranding: 1,
+            rel: 0,
+            disablekb: 1,
+            playsinline: 1,
+            fs: 0,
+            mute: 1,
+            enablejsapi: 1,
+            origin: window.location.origin,
+        },
+        events: {
+            onReady: e => {
+                try {
+                    e.target.mute();
+                    e.target.setVolume(0);
+                    e.target.playVideo();
+                } catch (err) {}
+            },
+            onStateChange: e => {},
+            onError: e => console.warn("bg player error code:", e.data),
+        }
+    });
+}
+
+async function fetchNews(topic) {
+    const r = await fetch("/api/news?topic=" + encodeURIComponent(topic), {
+        headers: TOKEN ? { "Authorization": "Bearer " + TOKEN } : {},
+    });
+    if (r.status === 401) {
+        const j = await r.json().catch(() => ({}));
+        const url = j.login_url || (CFG && CFG.login_url);
+        if (url) location.href = url;
+        throw new Error("auth required");
+    }
+    if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.detail || j.error || ("status " + r.status));
+    }
+    return r.json();
+}
+
+function renderCrawl(data) {
+    const wrap = $("#crawl");
+    const ep = document.createElement("div");
+    ep.className = "ep";
+    ep.innerHTML =
+        '<div>Dispatches from the Outer Rim</div>' +
+        '<span class="topic">Subject: ' + escapeHtml(data.topic.toUpperCase()) + '</span>' +
+        '<span class="stardate">Stardate ' + escapeHtml(data.stardate) + '</span>';
+    wrap.appendChild(ep);
+
+    for (const s of data.stories) {
+        const d = document.createElement("div");
+        d.className = "story";
+        const title = escapeHtml(s.title);
+        const src   = s.source ? '<span class="src">' + escapeHtml(s.source) + '</span>' : "";
+        if (s.link) {
+            d.innerHTML =
+                '<a href="' + escapeHtml(s.link) + '" target="_blank" rel="noopener noreferrer">' +
+                title + '</a>' + src;
+        } else {
+            d.innerHTML = title + src;
+        }
+        wrap.appendChild(d);
+    }
+
+    const end = document.createElement("div");
+    end.className = "end";
+    end.innerHTML = "May the news be with you.";
+    wrap.appendChild(end);
+}
+
+function escapeHtml(s) {
+    return String(s || "").replace(/[&<>"']/g, c => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+}
+
+function startSequence() {
+    // Shorter prelude → news arrives earlier. Crawl begins 3s into the
+    // logo bloom (well after NUTS NEWS is at peak size + visible) so it's
+    // rising from below the viewport while NUTS NEWS is still on-screen
+    // shrinking into the distance. The bloom animation is allowed to run
+    // its full 8s and finish on its own — so NUTS NEWS actually shrinks
+    // to its smallest scale before fading out, instead of being yanked
+    // off-screen at 65% through the animation.
+    const preludeMs    = 6000;
+    const crawlStartMs = 3000;
+    $("#splash").style.display = "none";
+    $("#prelude").classList.add("show");
+    setTimeout(() => {
+        $("#prelude").classList.remove("show");
+        $("#logo").classList.add("show");
+
+        // 1. Restart and play the theme music exactly when the logo blooms.
+        if (YT_PLAYER && typeof YT_PLAYER.playVideo === "function") {
+            try {
+                YT_PLAYER.seekTo(0, true);
+                YT_PLAYER.unMute();
+                YT_PLAYER.setVolume(100);
+                YT_PLAYER.playVideo();
+            } catch (err) {}
+        }
+
+        // 2. Keep the final video hidden and stopped until the crawl handoff.
+        if (BG_PLAYER && typeof BG_PLAYER.playVideo === "function") {
+            try {
+                BG_PLAYER.mute();
+                BG_PLAYER.setVolume(0);
+                BG_PLAYER.stopVideo();
+            } catch (err) {}
+        }
+    }, preludeMs);
+    setTimeout(() => {
+        $("#crawl-wrap").classList.add("go");
+        $("#controls").classList.add("go");
+        monitorCrawl();
+    }, preludeMs + crawlStartMs);
+    // (Intentionally NO setTimeout to remove #logo.show — the logoBloom
+    //  animation has `forwards` fill mode, so it locks at scale 0.18 +
+    //  opacity 0 by itself at t=8s into bloom. Cutting the class early
+    //  was the bug: it stopped the shrink at scale 0.28.)
+}
+
+let crawlMonitorInterval = null;
+
+function monitorCrawl() {
+    if (crawlMonitorInterval) clearInterval(crawlMonitorInterval);
+    
+    const endEl = document.querySelector("#crawl .end");
+    if (!endEl) return;
+
+    crawlMonitorInterval = setInterval(() => {
+        try {
+            const rect = endEl.getBoundingClientRect();
+            const screenMiddle = window.innerHeight / 2;
+
+            // Detect when the bottom of the final text block reaches the middle
+            // of the screen, then hand off from crawl to final video.
+            if (rect.bottom > 0 && rect.bottom <= screenMiddle) {
+                clearInterval(crawlMonitorInterval);
+                onCrawlMiddleReached();
+            }
+        } catch (err) {}
+    }, 200);
+}
+
+function onCrawlMiddleReached() {
+    // 1. Gently fade out the crawl text container so it doesn't show tiny unreadable text
+    const wrap = $("#crawl-wrap");
+    if (wrap) {
+        wrap.style.transition = "opacity 3s ease";
+        wrap.style.opacity = "0";
+    }
+
+    // 2. Duck the soundtrack before bringing in the final video.
+    duckMusic();
+
+    // 3. Start the final video from the beginning while hidden, then fade it in
+    // after YouTube has a moment to clear its initial overlay.
+    const videoBg = $("#video-bg");
+
+    if (BG_PLAYER && typeof BG_PLAYER.loadVideoById === "function") {
+        try {
+            BG_PLAYER.loadVideoById({
+                videoId: "tRX4JFWffkM",
+                startSeconds: 0
+            });
+            if (muted) {
+                BG_PLAYER.mute();
+                BG_PLAYER.setVolume(0);
+            } else {
+                BG_PLAYER.unMute();
+                BG_PLAYER.setVolume(100);
+            }
+            BG_PLAYER.playVideo();
+        } catch (e) {}
+    }
+    setTimeout(() => {
+        if (videoBg) videoBg.classList.add("show");
+    }, 500);
+
+    // 4. Stop the soundtrack once the final video owns the scene.
+    setTimeout(pauseMusic, 1800);
+    $("#controls").classList.add("complete");
+}
+
+function duckMusic() {
+    if (!YT_PLAYER || typeof YT_PLAYER.setVolume !== "function") return;
+    try {
+        YT_PLAYER.setVolume(18);
+    } catch (err) {}
+}
+
+function pauseMusic() {
+    if (!YT_PLAYER || typeof YT_PLAYER.pauseVideo !== "function") return;
+    try {
+        YT_PLAYER.pauseVideo();
+        YT_PLAYER.mute();
+    } catch (err) {}
+}
+
+function fadeOutMusic() {
+    if (!YT_PLAYER || typeof YT_PLAYER.getVolume !== "function") return;
+    try {
+        let vol = 100;
+        YT_PLAYER.setVolume(vol);
+        const fadeInterval = setInterval(() => {
+            vol -= 5;
+            if (vol <= 0) {
+                clearInterval(fadeInterval);
+                try {
+                    YT_PLAYER.pauseVideo();
+                    YT_PLAYER.mute();
+                } catch (e) {}
+            } else {
+                try {
+                    YT_PLAYER.setVolume(vol);
+                } catch (e) {}
+            }
+        }, 150);
+    } catch (err) {}
+}
+
+let muted = false;
+function activeAudioPlayer() {
+    const finalVideoShowing = $("#video-bg") && $("#video-bg").classList.contains("show");
+    return finalVideoShowing ? BG_PLAYER : YT_PLAYER;
+}
+
+function applyMuteState() {
+    const player = activeAudioPlayer();
+    if (!player) return;
+    try {
+        if (muted) {
+            if (typeof player.mute === "function") player.mute();
+            if (typeof player.setVolume === "function") player.setVolume(0);
+            $("#mute-toggle").textContent = "Sound: OFF";
+        } else {
+            if (typeof player.unMute === "function") player.unMute();
+            if (typeof player.setVolume === "function") player.setVolume(100);
+            $("#mute-toggle").textContent = "Sound: ON";
+        }
+    } catch (err) {}
+}
+
+function setupControls() {
+    $("#mute-toggle").addEventListener("click", () => {
+        muted = !muted;
+        applyMuteState();
+    });
+    $("#restart").addEventListener("click", () => location.reload());
+}
+
+function setStatus(msg, isErr) {
+    const s = $("#status");
+    s.classList.toggle("err", !!isErr);
+    s.textContent = msg;
+}
+
+async function engage() {
+    const btn = $("#engage");
+    btn.disabled = true;
+    setStatus("Establishing comms…");
+
+    // (The YouTube player has been muted-playing since page load; that keeps
+    //  the autoplay session active. We unmute only AFTER grub returns, so the
+    //  music drops in at the moment of payload arrival.)
+
+    try {
+        TOKEN = getToken();
+        if (!TOKEN) {
+            setStatus("Routing through nuts-auth…");
+            await new Promise(r => setTimeout(r, 350));
+            location.href = CFG.login_url;
+            return;
+        }
+
+        const topic = $("#topic").value.trim() || CFG.default_topic;
+
+        setStatus("Validating clearance…");
+        await new Promise(r => setTimeout(r, 250));
+
+        setStatus("Tasking grub crawler · target news.google.com…");
+        const t0 = performance.now();
+        const data = await fetchNews(topic);
+        const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+
+        // Grub returned → stories loaded successfully
+
+        setStatus(`${data.stories.length} dispatches received in ${elapsed}s · decoding…`);
+        await new Promise(r => setTimeout(r, 400));
+
+        renderCrawl(data);
+
+        setStatus("Engaging hyperdrive…");
+        await new Promise(r => setTimeout(r, 350));
+        startSequence();
+    } catch (e) {
+        setStatus("Signal lost: " + (e.message || e), true);
+        btn.disabled = false;
+    }
+}
+
+(async function init() {
+    TOKEN = getToken();
+    await loadCfg();
+    setupControls();
+    showLoginPin(!!TOKEN);
+    $("#engage").addEventListener("click", engage);
+    $("#topic").addEventListener("keydown", e => { if (e.key === "Enter") engage(); });
+})();
+</script>
+</body>
+</html>
